@@ -1,0 +1,115 @@
+services:
+  # MongoDB
+  mongodb:
+    image: mongo:7.0
+    container_name: mongodb
+    restart: unless-stopped
+    expose:
+      - "27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')" ]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.30"
+          memory: 380M
+        reservations:
+          cpus: "0.10"
+          memory: 280M
+
+  # Laravel Backend
+  backend:
+    image: ghcr.io/hoidanit-live/backend:latest
+    container_name: backend
+    restart: unless-stopped
+    expose:
+      - "8000"
+    environment:
+      APP_NAME: ${APP_NAME:-Laravel}
+      APP_ENV: ${APP_ENV:-local}
+      APP_DEBUG: ${APP_DEBUG:-true}
+      APP_KEY: ${APP_KEY:-}
+      DB_CONNECTION: mongodb
+      DB_DSN: mongodb://mongodb:27017
+      DB_DATABASE: ${DB_DATABASE:-laravel_app}
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "php", "artisan", "about", "--only=environment" ]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.30"
+          memory: 200M
+        reservations:
+          cpus: "0.10"
+          memory: 100M
+
+  # React Frontend
+  frontend:
+    image: ghcr.io/hoidanit-live/frontend:latest
+    container_name: frontend
+    restart: unless-stopped
+    expose:
+      - "3000"
+    healthcheck:
+      test: [ "CMD", "wget", "--spider", "--quiet", "http://localhost:3000" ]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.20"
+          memory: 128M
+        reservations:
+          cpus: "0.05"
+          memory: 64M
+
+  # Caddy Reverse Proxy
+  caddy:
+    image: caddy:2-alpine
+    container_name: caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      frontend:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.10"
+          memory: 48M
+        reservations:
+          cpus: "0.05"
+          memory: 24M
+
+volumes:
+  mongo_data:
+  caddy_data:
+  caddy_config:
+
+    # docker compose -p hoidanit-fullstack-laravel-react up -d
+
